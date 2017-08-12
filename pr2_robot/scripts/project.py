@@ -30,17 +30,15 @@ def get_normals(cloud):
     get_normals_prox = rospy.ServiceProxy('/feature_extractor/get_normals', GetNormals)
     return get_normals_prox(cloud).cluster
 
-
 # Helper function to create a yaml friendly dictionary from ROS messages
 def make_yaml_dict(test_scene_num, arm_name, object_name, pick_pose, place_pose):
     yaml_dict = {}
     yaml_dict["test_scene_num"] = test_scene_num.data
-    yaml_dict["arm_name"] = arm_name.data
+    yaml_dict["arm_name"]  = arm_name.data
     yaml_dict["object_name"] = object_name.data
     yaml_dict["pick_pose"] = message_converter.convert_ros_message_to_dictionary(pick_pose)
     yaml_dict["place_pose"] = message_converter.convert_ros_message_to_dictionary(place_pose)
     return yaml_dict
-
 
 # Helper function to output to yaml file
 def send_to_yaml(yaml_filename, dict_list):
@@ -48,21 +46,22 @@ def send_to_yaml(yaml_filename, dict_list):
     with open(yaml_filename, 'w') as outfile:
         yaml.dump(data_dict, outfile, default_flow_style=False)
 
-
 # Callback function for your Point Cloud Subscriber
 def pcl_callback(pcl_msg):
-    print 'Message in'
-    # Exercise-2 TODOs:
+
+# Exercise-2 TODOs:
 
     # TODO: Convert ROS msg to PCL data
     cloud = ros_to_pcl(pcl_msg)
-
+    
     # TODO: Statistical Outlier Filtering
     outlier_filter = cloud.make_statistical_outlier_filter()
-    outlier_filter.set_mean_k(10)
-    x = 0.2
+    outlier_filter.set_mean_k(50)
+    x = 1.0
     outlier_filter.set_std_dev_mul_thresh(x)
     cloud = outlier_filter.filter()
+
+
 
     # TODO: Voxel Grid Downsampling
     # Voxel Grid filter
@@ -81,30 +80,10 @@ def pcl_callback(pcl_msg):
     # Create a PassThrough filter object.
     passthrough = cloud_filtered.make_passthrough_filter()
     # Assign axis and range to the passthrough filter object.
-    filter_axis = 'x'
-    passthrough.set_filter_field_name(filter_axis)
-    axis_min = 0.35
-    axis_max = 1.0
-    passthrough.set_filter_limits(axis_min, axis_max)
-    # Finally use the filter function to obtain the resultant point cloud.
-    cloud_filtered = passthrough.filter()
-
-    passthrough = cloud_filtered.make_passthrough_filter()
-    # Assign axis and range to the passthrough filter object.
-    filter_axis = 'y'
-    passthrough.set_filter_field_name(filter_axis)
-    axis_min = -0.47
-    axis_max = 0.47
-    passthrough.set_filter_limits(axis_min, axis_max)
-    # Finally use the filter function to obtain the resultant point cloud.
-    cloud_filtered = passthrough.filter()
-
-    passthrough = cloud_filtered.make_passthrough_filter()
-    # Assign axis and range to the passthrough filter object.
     filter_axis = 'z'
     passthrough.set_filter_field_name(filter_axis)
-    axis_min = 0.5
-    axis_max = 1.5
+    axis_min = 0.77
+    axis_max = 1.1
     passthrough.set_filter_limits(axis_min, axis_max)
     # Finally use the filter function to obtain the resultant point cloud.
     cloud_filtered = passthrough.filter()
@@ -128,7 +107,7 @@ def pcl_callback(pcl_msg):
     cloud_objects = cloud_filtered.extract(inliers, negative=True)
 
     # TODO: Euclidean Clustering
-    white_cloud = XYZRGB_to_XYZ(cloud_objects)  # Apply function to convert XYZRGB to XYZ
+    white_cloud = XYZRGB_to_XYZ(cloud_objects)# Apply function to convert XYZRGB to XYZ
     tree = white_cloud.make_kdtree()
 
     # Create a cluster extraction object
@@ -138,7 +117,7 @@ def pcl_callback(pcl_msg):
     # NOTE: These are poor choices of clustering parameters
     # Your task is to experiment and find values that work for segmenting objects.
     ec.set_ClusterTolerance(0.015)
-    ec.set_MinClusterSize(50)
+    ec.set_MinClusterSize(70)
     ec.set_MaxClusterSize(1500)
     # Search the k-d tree for clusters
     ec.set_SearchMethod(tree)
@@ -172,7 +151,7 @@ def pcl_callback(pcl_msg):
     pcl_table_pub.publish(ros_cloud_table)
     pcl_cluster_pub.publish(ros_cluster_cloud)
 
-    # Exercise-3 TODOs:
+# Exercise-3 TODOs:
 
     # Classify the clusters! (loop through each detected cluster one at a time)
     detected_objects_labels = []
@@ -204,7 +183,6 @@ def pcl_callback(pcl_msg):
         detected_objects.append(do)
 
     # Publish the list of detected objects
-    print 'Message published'
     detected_objects_pub.publish(detected_objects)
 
     # Suggested location for where to invoke your pr2_mover() function within pcl_callback()
@@ -215,81 +193,43 @@ def pcl_callback(pcl_msg):
     except rospy.ROSInterruptException:
         pass
 
-
 # function to load parameters and request PickPlace service
 def pr2_mover(object_list):
-    pass
+
     # TODO: Initialize variables
-    dict_list = []
 
     # TODO: Get/Read parameters
-    object_list_param = rospy.get_param('/object_list')
-    poses = rospy.get_param('/dropbox')
 
     # TODO: Parse parameters into individual variables
-    test_scene_num = Int32()
-    test_scene_num.data = rospy.get_param('test_scene_num')
-
-    poses_parsed = {}
-    for pose in poses:
-        poses_parsed[pose['name']] = pose['position']
-
 
     # TODO: Rotate PR2 in place to capture side tables for the collision map
 
     # TODO: Loop through the pick list
-    for item in object_list_param:
-        object_group = item['group']
 
         # TODO: Get the PointCloud for a given object and obtain it's centroid
-        for object in object_list:
-            if object.label == item['name']:
-                # Name
-                object_name = String()
-                object_name.data = item['name']
 
-                # TODO: Assign the arm to be used for pick_place
-                arm_name = String()
-                if object_group == 'green':
-                    arm_name.data = 'right'
-                else:
-                    arm_name.data = 'left'
+        # TODO: Create 'place_pose' for the object
 
-                # Pick pose
-                points_arr = ros_to_pcl(object.cloud).to_array()
-                mean = np.mean(points_arr, axis=0)[:3]
-                pick_pose = Pose()
-                pick_pose.position.x = np.asscalar(mean[0])
-                pick_pose.position.y = np.asscalar(mean[1])
-                pick_pose.position.z = np.asscalar(mean[2])
+        # TODO: Assign the arm to be used for pick_place
 
-                # TODO: Create 'place_pose' for the object
-                place_pose = Pose()
-                place_pose.position.x = poses_parsed[arm_name.data][0]
-                place_pose.position.y = poses_parsed[arm_name.data][1]
-                place_pose.position.z = poses_parsed[arm_name.data][2]
+        # TODO: Create a list of dictionaries (made with make_yaml_dict()) for later output to yaml format
 
-                # TODO: Create a list of dictionaries (made with make_yaml_dict()) for later output to yaml format
-                yaml_dict = make_yaml_dict(test_scene_num, arm_name, object_name, pick_pose, place_pose)
-                dict_list.append(yaml_dict)
+        # Wait for 'pick_place_routine' service to come up
+        rospy.wait_for_service('pick_place_routine')
 
-                # Wait for 'pick_place_routine' service to come up
-                rospy.wait_for_service('pick_place_routine')
+        try:
+            pick_place_routine = rospy.ServiceProxy('pick_place_routine', PickPlace)
 
-                try:
-                    pick_place_routine = rospy.ServiceProxy('pick_place_routine', PickPlace)
+            # TODO: Insert your message variables to be sent as a service request
+            resp = pick_place_routine(TEST_SCENE_NUM, OBJECT_NAME, WHICH_ARM, PICK_POSE, PLACE_POSE)
 
-                    # TODO: Insert your message variables to be sent as a service request
-                    resp = pick_place_routine(test_scene_num, object_name, arm_name, pick_pose, place_pose)
+            print ("Response: ",resp.success)
 
-                    print ("Response: ", resp.success)
-
-                except rospy.ServiceException, e:
-                    print "Service call failed: %s" % e
+        except rospy.ServiceException, e:
+            print "Service call failed: %s"%e
 
     # TODO: Output your request parameters into output yaml file
-    filename = 'output_' + str(test_scene_num.data) + '.yml'
-    send_to_yaml(filename, dict_list)
+
 
 
 if __name__ == '__main__':
