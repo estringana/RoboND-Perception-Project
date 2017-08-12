@@ -3,6 +3,21 @@
 #### Project: [https://github.com/estringana/RoboND-Perception-Project](https://github.com/estringana/RoboND-Perception-Project)
 ---
 
+[//]: # (Image References)
+
+[Clusters]: ./ToDeliver/images/Clusters.png
+[Table]: ./ToDeliver/images/Table.png
+[Objects]: ./ToDeliver/images/Objects.png
+[BeforeRemoveZ]: ./ToDeliver/images/BeforeRemoveZ.png
+[RemovedZ]: ./ToDeliver/images/RemovedZ.png
+[RemovedY]: ./ToDeliver/images/RemovedY.png
+[RemovedX]: ./ToDeliver/images/RemovedX.png
+[DownSample]: ./ToDeliver/images/DownSample.png
+[NoNoisy]: ./ToDeliver/images/NoNoisy.png
+[initial]: ./ToDeliver/images/initial.png
+
+
+
 
 # Required Steps for a Passing Submission:
 1. Extract features and train an SVM model on new objects (see `pick_list_*.yaml` in `/pr2_robot/config/` for the list of models you'll be trying to identify). 
@@ -31,6 +46,10 @@ First thing you need to do is to convert the given cloud points given by Ros Poi
 cloud = ros_to_pcl(pcl_msg)
 ```
 
+We started with the following input PCL.
+![][Initial]
+
+
 ### Statistical Outlier Filtering
 This project also simulates the camera have lot of noisy. This happen on conventional cameras as well. However on the previous exercises we didn't have to do this. The way you get rid of all these points is by applying an Statistical Outlier Filtering. How it works is by checking all the neighbours of every point cloud and it discards all those ones which didn't have an average of neigbours over the defined K. On my case, after checking several combinations I fond that k=10 and x=0.2 removes all the noisy dots.
 
@@ -42,7 +61,9 @@ outlier_filter.set_std_dev_mul_thresh(x)
 cloud = outlier_filter.filter()
 ```
 
-ALEX IMAGE HERE, BEFORE AND AFTER
+You can see this image is much more clear
+![][NoNoisy]
+
 
  
 ### Voxel Grid Downsampling
@@ -62,7 +83,10 @@ vox.set_leaf_size(LEAF_SIZE, LEAF_SIZE, LEAF_SIZE)
 cloud_filtered = vox.filter()
 ```
 
-ALEX IMAGE HERE, BEFORE AND AFTER
+On this image we can see less points clouds than in the previous
+![][DownSample]
+
+
 
 ### PassThrough filter
 Here things become interesting. As we are going to be presented the object on the same place, we can discard all those areas of the image which we know, there won't be any object. The whole purpose of all these filter is to get to a point where we only have the object we are insterested on.
@@ -85,7 +109,8 @@ passthrough.set_filter_limits(axis_min, axis_max)
 cloud_filtered = passthrough.filter()
 ```
 
-ALEX IMAGE HERE, BEFORE AND AFTER
+This filter removes all PCL behind the table 
+![][RemovedX]
 
 #### Axis Y
 After removing from X, it leaves a big table with two wings on the sides. We know those two wings won't help in any way, so I removed them by applying the PassThrough filter. Here, it took me a while to realised that I had to used a negative min. Once I found it, it made sense.
@@ -102,7 +127,8 @@ passthrough.set_filter_limits(axis_min, axis_max)
 cloud_filtered = passthrough.filter()
 ```
 
-ALEX IMAGE HERE, BEFORE AND AFTER
+This one removes the wings of the table
+![][RemovedY]
 
 #### Axis Z
 Lastly, I realised that the table had a small leg. As the leg is on the Z axis, I had to used also the filter here. I played with the min and max until I got rid of it.
@@ -119,7 +145,10 @@ passthrough.set_filter_limits(axis_min, axis_max)
 cloud_filtered = passthrough.filter()
 ```
 
-ALEX IMAGE HERE, BEFORE AND AFTER
+Lastly we can see the leg of the table on the first image and after the filter it's not there(second image)
+![][BeforeRemoveZ]
+![][RemovedZ]
+
 
 ### RANSAC Plane Segmentation
 Last filter I had to apply was the Ransac filter. What it does, it helps to identify figures(inliers) like planes, esferics, tubes, etc. On this case, we needed the plane one to to identify the table and then, get the objectsd from what wasn't detected as table(outliers).
@@ -143,7 +172,12 @@ cloud_table = cloud_filtered.extract(inliers, negative=False)
 cloud_objects = cloud_filtered.extract(inliers, negative=True)
 ```
 
-ALEX IMAGE HERE, BEFORE AND AFTER
+Table
+![][Table]
+
+Object
+![][Objects]
+
 
 
 ### Euclidean Clustering
@@ -185,7 +219,8 @@ cluster_cloud = pcl.PointCloud_PointXYZRGB()
 cluster_cloud.from_list(color_cluster_point_list)
 ```
 
-ALEX IMAGE HERE, BEFORE AND AFTER
+Here we can see each cluster on a different color
+![][Clusters]
 
 
 # Excercise 3. Alex keep going here
