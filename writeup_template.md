@@ -15,8 +15,12 @@
 [DownSample]: ./ToDeliver/images/DownSample.png
 [NoNoisy]: ./ToDeliver/images/NoNoisy.png
 [initial]: ./ToDeliver/images/initial.png
-
-
+[TrainedModel1]: ./ToDeliver/images/TrainedModel1.png
+[CameraWithLabel1]: ./ToDeliver/images/CameraWithLabel1.png
+[TrainedModel2]: ./ToDeliver/images/TrainedModel2.png
+[CameraWithLabel2]: ./ToDeliver/images/CameraWithLabel2.png
+[TrainedModel3]: ./ToDeliver/images/TrainedModel3.png
+[CameraWithLabel3]: ./ToDeliver/images/CameraWithLabel3.png
 
 
 # Required Steps for a Passing Submission:
@@ -39,7 +43,7 @@
 12. Place all the objects from your pick list in their respective dropoff box and you have completed the challenge!
 13. Looking for a bigger challenge?  Load up the `challenge.world` scenario and see if you can get your perception pipeline working there!
 
-## Code explanation
+# Code explanation
 First thing you need to do is to convert the given cloud points given by Ros Point Cloud to PCL PointXYZRGB. This is required in order to use the python functions I will be explaining on the coming sections.
 
 ```
@@ -181,7 +185,7 @@ Object
 
 
 ### Euclidean Clustering
-At this point we have a bunch of points belonging to something. However, we don't know yet how many objects we have. By applying Euclidean Clustering, it detects which points belongs to one object and which ones to a different one. On this, you need to specify the minimum amout of points needed to generate an object. This specific one gets harder on the world 3 as there is a glue behind another object and it's too small. You also need to specify the max. I didn't worry much about it. Last thing, you need to set a tolerance. Here, I played with it until I found the disered result.
+At this point we have a bunch of points belonging to something. However, we don't know yet how many objects we have. By applying Euclidean Clustering, it detects which points belongs to one object and which ones to a different one. On this, you need to specify the minimum amout of points needed to generate an object. This specific one gets harder on the world 3 as there is a glue behind another object and it's too small. You also need to specify the max. I didn't worry much about the max as it didn't seem to be a problem. Last thing, you need to set a tolerance. Here, I played with it until I found the disered result.
 
 ```
 white_cloud = XYZRGB_to_XYZ(cloud_objects)  # Apply function to convert XYZRGB to XYZ
@@ -223,15 +227,125 @@ Here we can see each cluster on a different color
 ![][Clusters]
 
 
-# Excercise 3. Alex keep going here
+### Getting features and make a prediction
+Now we have all the clusters, we need to iterate over them and extract the features of each object. These features will be compared to the ones we extracted from training our model. The feautres we are extracting are based on colors and normals. We could have more features extracted here, however, for the purpose of the project, these two seem ok.
+
+```
+# Grab the points for the cluster
+pcl_cluster = cloud_objects.extract(pts_list)
+ros_cloud_objects = pcl_to_ros(pcl_cluster)
+# Compute the associated feature vector
+chists = compute_color_histograms(ros_cloud_objects, using_hsv=True)
+normals = get_normals(ros_cloud_objects)
+nhists = compute_normal_histograms(normals)
+feature = np.concatenate((chists, nhists))
+```
+Now we have the features, we need generate a predicion about which object those features belongs to:
+
+```
+# Make the prediction
+prediction = clf.predict(scaler.transform(feature.reshape(1, -1)))
+label = encoder.inverse_transform(prediction)[0]
+detected_objects_labels.append(label)
+```
 
 
+### Actioning the robot to pick the items
+I will go trhough this very quick the steps required for this are very detailed on the documentation.
+
+The way I approached this was by concatenating two loops. The first one iterates over the list of objects to pick. The second loop iterates until it finds such object on the list of detected objects.
+
+Once it is found, I extracted the required parameters, and send them to the robot as well as saved them in YAML format on a dictionary.
+
+Eventually I output this dictionary to the output_X.yml file where X is the world I am running on.
+
+```
+for item in object_list_param:
+object_group = item['group']
+
+# TODO: Get the PointCloud for a given object and obtain it's centroid
+for object in object_list:
+    if object.label == item['name']:
+        # Name
+        object_name = String()
+        object_name.data = item['name']
+
+        # TODO: Assign the arm to be used for pick_place
+        arm_name = String()
+        if object_group == 'green':
+            arm_name.data = 'right'
+        else:
+            arm_name.data = 'left'
+
+        # Pick pose
+        points_arr = ros_to_pcl(object.cloud).to_array()
+        mean = np.mean(points_arr, axis=0)[:3]
+        pick_pose = Pose()
+        pick_pose.position.x = np.asscalar(mean[0])
+        pick_pose.position.y = np.asscalar(mean[1])
+        pick_pose.position.z = np.asscalar(mean[2])
+
+        # TODO: Create 'place_pose' for the object
+        place_pose = Pose()
+        place_pose.position.x = poses_parsed[arm_name.data][0]
+        place_pose.position.y = poses_parsed[arm_name.data][1]
+        place_pose.position.z = poses_parsed[arm_name.data][2]
+
+        # TODO: Create a list of dictionaries (made with make_yaml_dict()) for later output to yaml format
+        yaml_dict = make_yaml_dict(test_scene_num, arm_name, object_name, pick_pose, place_pose)
+        dict_list.append(yaml_dict)
+
+        # Wait for 'pick_place_routine' service to come up
+        rospy.wait_for_service('pick_place_routine')
+
+        try:
+            pick_place_routine = rospy.ServiceProxy('pick_place_routine', PickPlace)
+
+            # TODO: Insert your message variables to be sent as a service request
+            resp = pick_place_routine(test_scene_num, object_name, arm_name, pick_pose, place_pose)
+
+            print ("Response: ", resp.success)
+```
 
 
+```
+filename = 'output_' + str(test_scene_num.data) + '.yml'
+send_to_yaml(filename, dict_list)
+```
 
+Before all this I map the poses into a dictionary. This helps later on to find the pose I am looking for
 
+```
+poses_parsed = {}
+for pose in poses:
+    poses_parsed[pose['name']] = pose['position']
+```
 
+# Output
 
+## World 1
+Matrixes after training model
+![][TrainedModel1]
 
+Visual of the robot detecting objects
+![][CameraWithLabel1]
 
+[Output generated in YML file](./ToDeliver/output_1.yml)
 
+## World 2
+Matrixes after training model
+![][TrainedModel2]
+
+Visual of the robot detecting objects
+![][CameraWithLabel2]
+
+[Output generated in YML file](./ToDeliver/output_2.yml)
+
+## World 3
+Matrixes after training model
+![][TrainedModel3]
+
+Visual of the robot detecting objects
+![][CameraWithLabel3]
+
+[Output generated in YML file](./ToDeliver/output_3.yml)
